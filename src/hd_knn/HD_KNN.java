@@ -111,15 +111,36 @@ public class HD_KNN {
 
             }
         }
-  }
-
-  public static class PredictClassReducer extends Reducer<Text,Text,Text,Text> {
-
-    @Override
-    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-    
     }
-  }
+
+    public static class PredictClassReducer extends Reducer<Text,Text,Text,Text> {
+      
+        private final Text emmitClass = new Text();
+
+        @Override
+        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+
+            //IN:
+            //  key => test instance
+            //  value => array of distance;class
+            //OUT;
+            //  key => test instance
+            //  value => class
+            emmitClass.set("-1");
+            double minDistance = Double.MAX_VALUE;
+            for (Text val : values) {
+                // Split ";" and get distance and value
+                StringTokenizer str_tok = new StringTokenizer(val.toString(), ";");
+                double distance = Double.parseDouble(str_tok.nextToken());
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    emmitClass.set(str_tok.nextToken());
+                }
+            }
+
+            context.write(key, emmitClass);
+        }
+    }
 
   public static void main(String[] args) throws Exception {
     Configuration conf = new Configuration();
