@@ -24,65 +24,93 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 public class HD_KNN {
 
-    public static class DistanceCalculatorMapper extends Mapper<Object, Text, Text, Text>{
+    public static class DistanceCalculatorMapper extends Mapper<Object, Text, Text, Text> {
 
-    private String readTest(Configuration conf) {
+        private final Text emmitKey = new Text();
+        private final Text emmitValue = new Text();
         
-        try{
-            String file_path = "/home/hadoop/";
-            Path pt = new Path(file_path + "/" + "knn_test.txt");
-            FileSystem fs = FileSystem.get( new URI(file_path), conf);
-            LocalFileSystem localFileSystem = fs.getLocal(conf);
-            BufferedReader bufferRedaer = new BufferedReader(new InputStreamReader(localFileSystem.open(pt)));
+        private String readTest(Configuration conf) {
 
-            String str = null;
-            StringBuilder str_build = new StringBuilder();
-            while ((str = bufferRedaer.readLine())!= null)
-            {
-                str_build.append(str);
-            }
-            return str_build.toString();
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-        return null;
-    }
-      
-    @Override
-    public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-        
-        // In value train instances
-        // x11,x12,...,x1m
-        // x21,x22,...,x2m
-        // ...............
-        // xn1,xn2,...,xnm
-        //Separate train data by "\n"
-        StringTokenizer trainInstances = new StringTokenizer(value.toString(), "\n");
-        while (trainInstances.hasMoreTokens()) {
-            // Separate data by ','
-            StringTokenizer dataValues = new StringTokenizer(trainInstances.nextToken(), ",");
-            //Convert string to double
-            double[] trainData = new double[dataValues.countTokens() -1 ];
-            String trainClass;
-            int i = 0;
-            while (dataValues.hasMoreTokens()) {
-                // If is the last token, is the class
-                String s = dataValues.nextToken();
-                if (dataValues.hasMoreTokens()) {
-                    // Is data
-                    trainData[i] = Double.parseDouble(s);
-                    i++;
-                } else {
-                    trainClass = s;
+            try{
+                String file_path = "/home/hadoop/";
+                Path pt = new Path(file_path + "/" + "knn_test.txt");
+                FileSystem fs = FileSystem.get( new URI(file_path), conf);
+                LocalFileSystem localFileSystem = fs.getLocal(conf);
+                BufferedReader bufferRedaer = new BufferedReader(new InputStreamReader(localFileSystem.open(pt)));
+
+                String str = null;
+                StringBuilder str_build = new StringBuilder();
+                while ((str = bufferRedaer.readLine())!= null)
+                {
+                    str_build.append(str);
                 }
+                return str_build.toString();
+            }catch(Exception e){
+                e.printStackTrace();
             }
-            // Have data and class
-            // Compute distance
-            
+            return null;
         }
-        
-                
-    }
+    
+        private String[] tokenizeData(String data) {
+
+            data = data.trim();
+            StringTokenizer str_tok = new StringTokenizer(data, ",");
+            String[] ret = new String[str_tok.countTokens()];
+            int i = 0;
+            while (str_tok.hasMoreTokens()) {
+                ret[i] = str_tok.nextToken();
+                i++;
+            }
+            return ret;
+
+        }
+
+        private double euclideanDistance(String[] train, String[] test) {
+
+            double s = 0;
+            for (int i = 0; i < test.length; i++) {
+                double val1 = Double.valueOf(train[i]);
+                double val2 = Double.valueOf(test[i]);
+                s += (val1-val2)*(val1-val2);
+            }
+            return Math.sqrt(s);
+
+        }
+      
+        @Override
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+
+            // In value train instances
+            // x11,x12,...,x1m
+            // x21,x22,...,x2m
+            // ...............
+            // xn1,xn2,...,xnm
+            // Read test data
+            String testDataCSV = readTest(context.getConfiguration());
+            //Separa test data by "\n"
+            StringTokenizer testInstances = new StringTokenizer(testDataCSV, "\n");
+            while (testInstances.hasMoreTokens()) {
+                String nextTest = testInstances.nextToken();
+                emmitKey.set(nextTest);
+                String[] testData = tokenizeData(nextTest);
+                //Separate train data by "\n"
+                StringTokenizer trainInstances = new StringTokenizer(value.toString(), "\n");
+                while (trainInstances.hasMoreTokens()) {
+                    String[] trainData = tokenizeData(trainInstances.nextToken());
+                    //Compute distance
+                    double distance = euclideanDistance(trainData, testData);
+                    //tarin class: last value of trainData
+                    String trainClass = trainData[trainData.length - 1];
+                    // Emmit:
+                    // key => test instance
+                    // value => distance;class
+                    emmitValue.set(String.valueOf(distance) + ";" + trainClass);
+                    context.write(emmitKey, emmitValue);
+
+                }
+
+            }
+        }
   }
 
   public static class PredictClassReducer extends Reducer<Text,Text,Text,Text> {
