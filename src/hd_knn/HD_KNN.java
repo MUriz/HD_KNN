@@ -6,6 +6,8 @@
 package hd_knn;
 
 import java.io.BufferedReader;
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
@@ -15,7 +17,9 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -23,11 +27,75 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 public class HD_KNN {
+    
+    //put /Users/txumauriz/NetBeansProjects/HD_KNN/dist/HD_KNN.jar /home/hadoop/HD_KNN.jar
+    public static class DistanceClassOutput implements WritableComparable<DistanceClassOutput> {
+        public final Text instanceClass;
+        public final DoubleWritable distance;
+        
+        public DistanceClassOutput() {
+            instanceClass = new Text("-1");
+            distance = new DoubleWritable(Double.MAX_VALUE);
+        }
 
-    public static class DistanceCalculatorMapper extends Mapper<Object, Text, Text, Text> {
+        public DistanceClassOutput(Text instanceClass, DoubleWritable distance) {
+            this.instanceClass = instanceClass;
+            this.distance = distance;
+        }
 
-        private final Text emmitKey = new Text();
-        private final Text emmitValue = new Text();
+        @Override
+        public int compareTo(DistanceClassOutput o) {
+            int classCmp = instanceClass.compareTo(o.instanceClass);
+            if (classCmp != 0) {
+                return classCmp;
+            }
+            return distance.compareTo(o.distance);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            DistanceClassOutput that = (DistanceClassOutput) o;
+
+            if (instanceClass != null ? !instanceClass.equals(that.instanceClass) : that.instanceClass != null) return false;
+            if (distance != null ? !distance.equals(that.distance) : that.distance != null) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            int result = instanceClass != null ? instanceClass.hashCode() : 0;
+            result = 31 * result + (distance != null ? distance.hashCode() : 0);
+            return result;
+        }
+
+        @Override
+        public void write(DataOutput dataOutput) throws IOException {
+            instanceClass.write(dataOutput);
+            distance.write(dataOutput);
+        }
+
+        @Override
+        public void readFields(DataInput dataInput) throws IOException {
+            instanceClass.readFields(dataInput);
+            distance.readFields(dataInput);
+        }
+        
+        @Override
+        public String toString() {
+            
+            return instanceClass.toString() + " " + distance.toString();
+            
+        }
+        
+    }
+
+    public static class DistanceCalculatorMapper extends Mapper<Object, Text, Text, DistanceClassOutput> {
+
+        private Text emmitKey = new Text();
         
         private String readTest(Configuration conf) {
 
@@ -51,15 +119,17 @@ public class HD_KNN {
             return null;
         }
     
-        private String[] tokenizeData(String data) {
+        private String[] tokenizeData(String data, boolean getClass) {
 
             data = data.trim();
             StringTokenizer str_tok = new StringTokenizer(data, ",");
-            String[] ret = new String[str_tok.countTokens()];
-            int i = 0;
-            while (str_tok.hasMoreTokens()) {
+            int n = str_tok.countTokens();
+            if (!getClass) {
+                n -= 1;
+            }
+            String[] ret = new String[n];
+            for (int i = 0; i < n; i++) {
                 ret[i] = str_tok.nextToken();
-                i++;
             }
             return ret;
 
@@ -69,9 +139,14 @@ public class HD_KNN {
 
             double s = 0;
             for (int i = 0; i < test.length; i++) {
-                double val1 = Double.valueOf(train[i]);
-                double val2 = Double.valueOf(test[i]);
-                s += (val1-val2)*(val1-val2);
+                try {
+                    double val1 = Double.valueOf(train[i]);
+                    double val2 = Double.valueOf(test[i]);
+                    s += (val1-val2)*(val1-val2);
+                } catch (Exception e) {
+                    
+                }
+                
             }
             return Math.sqrt(s);
 
@@ -92,19 +167,19 @@ public class HD_KNN {
             while (testInstances.hasMoreTokens()) {
                 String nextTest = testInstances.nextToken();
                 emmitKey.set(nextTest);
-                String[] testData = tokenizeData(nextTest);
+                String[] testData = tokenizeData(nextTest, false);
                 //Separate train data by "\n"
                 StringTokenizer trainInstances = new StringTokenizer(value.toString(), "\n");
                 while (trainInstances.hasMoreTokens()) {
-                    String[] trainData = tokenizeData(trainInstances.nextToken());
+                    String[] trainData = tokenizeData(trainInstances.nextToken(), true);
                     //Compute distance
-                    double distance = euclideanDistance(trainData, testData);
+                    DoubleWritable distance = new DoubleWritable(euclideanDistance(trainData, testData));
                     //tarin class: last value of trainData
-                    String trainClass = trainData[trainData.length - 1];
+                    Text trainClass = new Text(trainData[trainData.length - 1]);
                     // Emmit:
                     // key => test instance
                     // value => distance;class
-                    emmitValue.set(String.valueOf(distance) + ";" + trainClass);
+                    DistanceClassOutput emmitValue = new DistanceClassOutput(trainClass, distance);
                     context.write(emmitKey, emmitValue);
 
                 }
@@ -113,12 +188,10 @@ public class HD_KNN {
         }
     }
 
-    public static class PredictClassReducer extends Reducer<Text,Text,Text,Text> {
-      
-        private final Text emmitClass = new Text();
+    public static class PredictClassReducer extends Reducer<Text,DistanceClassOutput,Text,DistanceClassOutput> {
 
         @Override
-        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+        public void reduce(Text key, Iterable<DistanceClassOutput> values, Context context) throws IOException, InterruptedException {
 
             //IN:
             //  key => test instance
@@ -126,15 +199,13 @@ public class HD_KNN {
             //OUT;
             //  key => test instance
             //  value => class
-            emmitClass.set("-1");
             double minDistance = Double.MAX_VALUE;
-            for (Text val : values) {
-                // Split ";" and get distance and value
-                StringTokenizer str_tok = new StringTokenizer(val.toString(), ";");
-                double distance = Double.parseDouble(str_tok.nextToken());
+            DistanceClassOutput emmitClass = new DistanceClassOutput();
+            for (DistanceClassOutput val : values) {
+                double distance = val.distance.get();
                 if (distance < minDistance) {
                     minDistance = distance;
-                    emmitClass.set(str_tok.nextToken());
+                    emmitClass = val;
                 }
             }
 
@@ -150,7 +221,7 @@ public class HD_KNN {
     job.setCombinerClass(PredictClassReducer.class);
     job.setReducerClass(PredictClassReducer.class);
     job.setOutputKeyClass(Text.class);
-    job.setOutputValueClass(Text.class);
+    job.setOutputValueClass(DistanceClassOutput.class);
     FileInputFormat.addInputPath(job, new Path(args[0]));
     FileOutputFormat.setOutputPath(job, new Path(args[1]));
     System.exit(job.waitForCompletion(true) ? 0 : 1);
