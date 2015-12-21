@@ -110,7 +110,7 @@ public class HD_KNN {
                 StringBuilder str_build = new StringBuilder();
                 while ((str = bufferRedaer.readLine())!= null)
                 {
-                    str_build.append(str);
+                    str_build.append(str+"\n");
                 }
                 return str_build.toString();
             }catch(Exception e){
