@@ -335,11 +335,13 @@ public class HD_KNN {
         // argumentos
         // Variante KNN: 0 Normal, 1 Media, 2 Inversa del voto
         // Distancia a utilizar: 0 Euclidea, 1 Manhattan, 2 Mahalonobis
+        // k
         // Input path
         // Output path
         Configuration conf = new Configuration();
         conf.set("knn_method", args[0]);
         conf.set("distance", args[1]);
+        conf.setInt("k", Integer.parseInt(args[2]));
         Job job = Job.getInstance(conf, "KNN");
         job.setJarByClass(HD_KNN.class);
         job.setMapperClass(DistanceCalculatorMapper.class);
@@ -347,8 +349,8 @@ public class HD_KNN {
         job.setReducerClass(PredictClassReducer.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(DistanceClassOutput.class);
-        FileInputFormat.addInputPath(job, new Path(args[2]));
-        FileOutputFormat.setOutputPath(job, new Path(args[3]));
+        FileInputFormat.addInputPath(job, new Path(args[3]));
+        FileOutputFormat.setOutputPath(job, new Path(args[4]));
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
