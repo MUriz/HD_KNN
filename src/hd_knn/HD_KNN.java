@@ -11,6 +11,8 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.StringTokenizer;
 
 import org.apache.hadoop.conf.Configuration;
@@ -199,18 +201,95 @@ public class HD_KNN {
             //OUT;
             //  key => test instance
             //  value => class
-            double minDistance = Double.MAX_VALUE;
-            DistanceClassOutput emmitClass = new DistanceClassOutput();
+            int k = context.getConfiguration().getInt("k", 1);
+            DistanceClassOutput[] nearest = new DistanceClassOutput[k];
+            for (int i = 0; i < k; i++) {
+                nearest[i] = new DistanceClassOutput(new Text("-1"), new DoubleWritable(Double.MAX_VALUE));
+            }
             for (DistanceClassOutput val : values) {
+                update(nearest, val);
+            }
+
+            DistanceClassOutput emmitClass = getReducerOutput(nearest);
+            /*for (DistanceClassOutput val : values) {
                 double distance = val.distance.get();
                 if (distance < minDistance) {
                     minDistance = distance;
                     emmitClass = val;
                 }
-            }
+            }*/
 
             context.write(key, emmitClass);
         }
+        
+        public void update(DistanceClassOutput[] nearest, DistanceClassOutput current) {
+            
+            double max = nearest[0].distance.get();
+            int i_max = 0;
+            for (int i = 1; i < nearest.length; i++) {
+                if (nearest[i].distance.get() > max) {
+                    max = nearest[i].distance.get();
+                    i_max = i;
+                }
+            }
+            
+            if (current.distance.get() < max) {
+                nearest[i_max] = current;
+            }
+            
+        }
+        
+        public DistanceClassOutput getReducerOutput(DistanceClassOutput[] nearest) {
+            
+            //MEDIA
+            HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
+            for (DistanceClassOutput dco : nearest) {
+                nearest_map.get(dco.instanceClass).add(dco.distance.get());
+            }
+            Text res_class = new Text("-1");
+            double min_d = Double.MAX_VALUE;
+            for (Text ic : nearest_map.keySet()) {
+                double s = 0;
+                for (double d : nearest_map.get(ic)) {
+                    s += d;
+                }
+                s /= nearest_map.get(ic).size();
+                if (s < min_d) {
+                    res_class = ic;
+                    min_d = s;
+                }
+            }
+            return new DistanceClassOutput(res_class, new DoubleWritable(min_d));
+            
+        }
+        
+        public DistanceClassOutput getReducerOutput2(DistanceClassOutput[] nearest) {
+            
+            //MEDIA
+            HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
+            for (DistanceClassOutput dco : nearest) {
+                if (dco.distance.get() == 0) {
+                    nearest_map.get(dco.instanceClass).add(Double.MAX_VALUE);
+                } else {
+                    nearest_map.get(dco.instanceClass).add(1/dco.distance.get());
+                }
+            }
+            Text res_class = new Text("-1");
+            double max = -1;
+            for (Text ic : nearest_map.keySet()) {
+                double s = 0;
+                for (double d : nearest_map.get(ic)) {
+                    s += d;
+                }
+                if (s > max) {
+                    res_class = ic;
+                    max = s;
+                }
+            }
+            return new DistanceClassOutput(res_class, new DoubleWritable(max));
+            
+        }
+        
     }
 
   public static void main(String[] args) throws Exception {
