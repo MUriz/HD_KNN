@@ -137,7 +137,7 @@ public class HD_KNN {
 
         }
 
-        private double euclideanDistance(String[] train, String[] test) {
+        /*private double euclideanDistance(String[] train, String[] test) {
 
             double s = 0;
             for (int i = 0; i < test.length; i++) {
@@ -152,7 +152,7 @@ public class HD_KNN {
             }
             return Math.sqrt(s);
 
-        }
+        }*/
       
         @Override
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
@@ -162,6 +162,22 @@ public class HD_KNN {
             // x21,x22,...,x2m
             // ...............
             // xn1,xn2,...,xnm
+            String dist = context.getConfiguration().get("distance", "0");
+            KNN_distance knn_distance;
+            switch (dist) {
+                case "0":
+                    knn_distance = new KNN_EuclideanDistance();
+                    break;
+                /*case "1":
+                    //Manhattan
+                    break;
+                case "2":
+                    //Mahalanobis
+                    break;*/
+                default:
+                    knn_distance = new KNN_EuclideanDistance();
+                    break;
+            }
             // Read test data
             String testDataCSV = readTest(context.getConfiguration());
             //Separa test data by "\n"
@@ -175,7 +191,7 @@ public class HD_KNN {
                 while (trainInstances.hasMoreTokens()) {
                     String[] trainData = tokenizeData(trainInstances.nextToken(), true);
                     //Compute distance
-                    DoubleWritable distance = new DoubleWritable(euclideanDistance(trainData, testData));
+                    DoubleWritable distance = new DoubleWritable(knn_distance.distance(trainData, testData));
                     //tarin class: last value of trainData
                     Text trainClass = new Text(trainData[trainData.length - 1]);
                     // Emmit:
@@ -201,6 +217,22 @@ public class HD_KNN {
             //OUT;
             //  key => test instance
             //  value => class
+            KNN_method knn_method;
+            String meth = context.getConfiguration().get("knn_method", "0");
+            switch (meth) {
+                case "0":
+                    knn_method = new KNN_Normal();
+                    break;
+                case "1":
+                    knn_method = new KNN_MediaVecinos();
+                    break;
+                case "2":
+                    knn_method = new KNN_VotoInverso();
+                    break;
+                default:
+                    knn_method = new KNN_Normal();
+                    break;
+            }
             int k = context.getConfiguration().getInt("k", 1);
             DistanceClassOutput[] nearest = new DistanceClassOutput[k];
             for (int i = 0; i < k; i++) {
@@ -210,7 +242,7 @@ public class HD_KNN {
                 update(nearest, val);
             }
 
-            DistanceClassOutput emmitClass = getReducerOutput(nearest);
+            DistanceClassOutput emmitClass = knn_method.getReducerOutput(nearest);
             /*for (DistanceClassOutput val : values) {
                 double distance = val.distance.get();
                 if (distance < minDistance) {
@@ -239,7 +271,7 @@ public class HD_KNN {
             
         }
         
-        public DistanceClassOutput getReducerOutput(DistanceClassOutput[] nearest) {
+        /*public DistanceClassOutput getReducerOutput(DistanceClassOutput[] nearest) {
             
             //MEDIA
             HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
@@ -294,21 +326,29 @@ public class HD_KNN {
             }
             return new DistanceClassOutput(res_class, new DoubleWritable(max));
             
-        }
+        }*/
         
     }
 
-  public static void main(String[] args) throws Exception {
-    Configuration conf = new Configuration();
-    Job job = Job.getInstance(conf, "KNN");
-    job.setJarByClass(HD_KNN.class);
-    job.setMapperClass(DistanceCalculatorMapper.class);
-    job.setCombinerClass(PredictClassReducer.class);
-    job.setReducerClass(PredictClassReducer.class);
-    job.setOutputKeyClass(Text.class);
-    job.setOutputValueClass(DistanceClassOutput.class);
-    FileInputFormat.addInputPath(job, new Path(args[0]));
-    FileOutputFormat.setOutputPath(job, new Path(args[1]));
-    System.exit(job.waitForCompletion(true) ? 0 : 1);
-  }
+    public static void main(String[] args) throws Exception {
+        
+        // argumentos
+        // Variante KNN: 0 Normal, 1 Media, 2 Inversa del voto
+        // Distancia a utilizar: 0 Euclidea, 1 Manhattan, 2 Mahalonobis
+        // Input path
+        // Output path
+        Configuration conf = new Configuration();
+        conf.set("knn_method", args[0]);
+        conf.set("distance", args[1]);
+        Job job = Job.getInstance(conf, "KNN");
+        job.setJarByClass(HD_KNN.class);
+        job.setMapperClass(DistanceCalculatorMapper.class);
+        job.setCombinerClass(PredictClassReducer.class);
+        job.setReducerClass(PredictClassReducer.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(DistanceClassOutput.class);
+        FileInputFormat.addInputPath(job, new Path(args[2]));
+        FileOutputFormat.setOutputPath(job, new Path(args[3]));
+        System.exit(job.waitForCompletion(true) ? 0 : 1);
+    }
 }
