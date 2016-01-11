@@ -244,6 +244,9 @@ public class HD_KNN {
             //MEDIA
             HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
             for (DistanceClassOutput dco : nearest) {
+                if (nearest_map.get(dco.instanceClass) == null) {
+                    nearest_map.put(dco.instanceClass, new ArrayList<Double>());
+                }
                 nearest_map.get(dco.instanceClass).add(dco.distance.get());
             }
             Text res_class = new Text("-1");
@@ -268,6 +271,9 @@ public class HD_KNN {
             //MEDIA
             HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
             for (DistanceClassOutput dco : nearest) {
+                if (nearest_map.get(dco.instanceClass) == null) {
+                    nearest_map.put(dco.instanceClass, new ArrayList<Double>());
+                }
                 if (dco.distance.get() == 0) {
                     nearest_map.get(dco.instanceClass).add(Double.MAX_VALUE);
                 } else {
