@@ -168,12 +168,12 @@ public class HD_KNN {
                 case "0":
                     knn_distance = new KNN_EuclideanDistance();
                     break;
-                /*case "1":
-                    //Manhattan
+                case "1":
+                    knn_distance = new KNN_ManhattanDistance();
                     break;
                 case "2":
-                    //Mahalanobis
-                    break;*/
+                    knn_distance = new KNN_ChebyshevDistance();
+                    break;
                 default:
                     knn_distance = new KNN_EuclideanDistance();
                     break;
@@ -333,8 +333,8 @@ public class HD_KNN {
     public static void main(String[] args) throws Exception {
         
         // argumentos
-        // Variante KNN: 0 Normal, 1 Media, 2 Inversa del voto
-        // Distancia a utilizar: 0 Euclidea, 1 Manhattan, 2 Mahalonobis
+        // Variante KNN: 0 Normal, 1 Media, 2 Inversa de la distancia
+        // Distancia a utilizar: 0 Euclidea, 1 Manhattan, 2 Chebyshev
         // k
         // Input path
         // Output path
