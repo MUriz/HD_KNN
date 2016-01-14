@@ -53,7 +53,7 @@ public class KNN {
                 inst_class = train_car[train_car.length -1];
             }
         }
-        return inst_class;
+        return inst_class + "\t" + String.valueOf(min_dist);
         
     }
     

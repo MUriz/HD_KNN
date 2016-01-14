@@ -11,8 +11,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.StringTokenizer;
 
 import org.apache.hadoop.conf.Configuration;
@@ -30,7 +28,6 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 public class HD_KNN {
     
-    //put /Users/txumauriz/NetBeansProjects/HD_KNN/dist/HD_KNN.jar /home/hadoop/HD_KNN.jar
     public static class DistanceClassOutput implements WritableComparable<DistanceClassOutput> {
         public final Text instanceClass;
         public final DoubleWritable distance;
@@ -43,6 +40,11 @@ public class HD_KNN {
         public DistanceClassOutput(Text instanceClass, DoubleWritable distance) {
             this.instanceClass = instanceClass;
             this.distance = distance;
+        }
+        
+        public DistanceClassOutput(DistanceClassOutput o) {
+            this.instanceClass = new Text(o.instanceClass);
+            this.distance = new DoubleWritable(o.distance.get());
         }
 
         @Override
@@ -96,15 +98,13 @@ public class HD_KNN {
     }
 
     public static class DistanceCalculatorMapper extends Mapper<Object, Text, Text, DistanceClassOutput> {
-
-        private Text emmitKey = new Text();
         
         private String readTest(Configuration conf) {
 
             try{
-                String file_path = "/home/hadoop/";
-                Path pt = new Path(file_path + "/" + "knn_test.txt");
-                FileSystem fs = FileSystem.get( new URI(file_path), conf);
+                String test_file = conf.get("test_file");
+                Path pt = new Path(test_file);
+                FileSystem fs = FileSystem.get( new URI(test_file), conf);
                 LocalFileSystem localFileSystem = fs.getLocal(conf);
                 BufferedReader bufferRedaer = new BufferedReader(new InputStreamReader(localFileSystem.open(pt)));
 
@@ -136,23 +136,6 @@ public class HD_KNN {
             return ret;
 
         }
-
-        /*private double euclideanDistance(String[] train, String[] test) {
-
-            double s = 0;
-            for (int i = 0; i < test.length; i++) {
-                try {
-                    double val1 = Double.valueOf(train[i]);
-                    double val2 = Double.valueOf(test[i]);
-                    s += (val1-val2)*(val1-val2);
-                } catch (Exception e) {
-                    
-                }
-                
-            }
-            return Math.sqrt(s);
-
-        }*/
       
         @Override
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
@@ -184,7 +167,7 @@ public class HD_KNN {
             StringTokenizer testInstances = new StringTokenizer(testDataCSV, "\n");
             while (testInstances.hasMoreTokens()) {
                 String nextTest = testInstances.nextToken();
-                emmitKey.set(nextTest);
+                Text emmitKey = new Text(nextTest);
                 String[] testData = tokenizeData(nextTest, false);
                 //Separate train data by "\n"
                 StringTokenizer trainInstances = new StringTokenizer(value.toString(), "\n");
@@ -239,22 +222,20 @@ public class HD_KNN {
                 nearest[i] = new DistanceClassOutput(new Text("-1"), new DoubleWritable(Double.MAX_VALUE));
             }
             for (DistanceClassOutput val : values) {
-                update(nearest, val);
+                nearest = update(nearest, val);
             }
 
-            DistanceClassOutput emmitClass = knn_method.getReducerOutput(nearest);
-            /*for (DistanceClassOutput val : values) {
-                double distance = val.distance.get();
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    emmitClass = val;
-                }
-            }*/
+            DistanceClassOutput emmitClass = new DistanceClassOutput(knn_method.getReducerOutput(nearest));
 
             context.write(key, emmitClass);
         }
         
-        public void update(DistanceClassOutput[] nearest, DistanceClassOutput current) {
+        public DistanceClassOutput[] update(DistanceClassOutput[] nearest, DistanceClassOutput current) {
+            
+            DistanceClassOutput[] ret = new DistanceClassOutput[nearest.length];
+            for (int i = 0; i < nearest.length; i++) {
+                ret[i] = new DistanceClassOutput(nearest[i]);
+            }
             
             double max = nearest[0].distance.get();
             int i_max = 0;
@@ -266,67 +247,12 @@ public class HD_KNN {
             }
             
             if (current.distance.get() < max) {
-                nearest[i_max] = current;
+                ret[i_max] = new DistanceClassOutput(current);
             }
+            
+            return ret;
             
         }
-        
-        /*public DistanceClassOutput getReducerOutput(DistanceClassOutput[] nearest) {
-            
-            //MEDIA
-            HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
-            for (DistanceClassOutput dco : nearest) {
-                if (nearest_map.get(dco.instanceClass) == null) {
-                    nearest_map.put(dco.instanceClass, new ArrayList<Double>());
-                }
-                nearest_map.get(dco.instanceClass).add(dco.distance.get());
-            }
-            Text res_class = new Text("-1");
-            double min_d = Double.MAX_VALUE;
-            for (Text ic : nearest_map.keySet()) {
-                double s = 0;
-                for (double d : nearest_map.get(ic)) {
-                    s += d;
-                }
-                s /= nearest_map.get(ic).size();
-                if (s < min_d) {
-                    res_class = ic;
-                    min_d = s;
-                }
-            }
-            return new DistanceClassOutput(res_class, new DoubleWritable(min_d));
-            
-        }
-        
-        public DistanceClassOutput getReducerOutput2(DistanceClassOutput[] nearest) {
-            
-            //MEDIA
-            HashMap<Text, ArrayList<Double>> nearest_map = new HashMap<>();
-            for (DistanceClassOutput dco : nearest) {
-                if (nearest_map.get(dco.instanceClass) == null) {
-                    nearest_map.put(dco.instanceClass, new ArrayList<Double>());
-                }
-                if (dco.distance.get() == 0) {
-                    nearest_map.get(dco.instanceClass).add(Double.MAX_VALUE);
-                } else {
-                    nearest_map.get(dco.instanceClass).add(1/dco.distance.get());
-                }
-            }
-            Text res_class = new Text("-1");
-            double max = -1;
-            for (Text ic : nearest_map.keySet()) {
-                double s = 0;
-                for (double d : nearest_map.get(ic)) {
-                    s += d;
-                }
-                if (s > max) {
-                    res_class = ic;
-                    max = s;
-                }
-            }
-            return new DistanceClassOutput(res_class, new DoubleWritable(max));
-            
-        }*/
         
     }
 
@@ -336,12 +262,18 @@ public class HD_KNN {
         // Variante KNN: 0 Normal, 1 Media, 2 Inversa de la distancia
         // Distancia a utilizar: 0 Euclidea, 1 Manhattan, 2 Chebyshev
         // k
+        // test_file
         // Input path
         // Output path
+        if (args.length != 6) {
+            System.out.println("Arguments: knn_type distance k test_file input_path output_path");
+            System.exit(-1);
+        }
         Configuration conf = new Configuration();
         conf.set("knn_method", args[0]);
         conf.set("distance", args[1]);
         conf.setInt("k", Integer.parseInt(args[2]));
+        conf.set("test_file", args[3]);
         Job job = Job.getInstance(conf, "KNN");
         job.setJarByClass(HD_KNN.class);
         job.setMapperClass(DistanceCalculatorMapper.class);
@@ -349,8 +281,8 @@ public class HD_KNN {
         job.setReducerClass(PredictClassReducer.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(DistanceClassOutput.class);
-        FileInputFormat.addInputPath(job, new Path(args[3]));
-        FileOutputFormat.setOutputPath(job, new Path(args[4]));
+        FileInputFormat.addInputPath(job, new Path(args[4]));
+        FileOutputFormat.setOutputPath(job, new Path(args[5]));
         System.exit(job.waitForCompletion(true) ? 0 : 1);
     }
 }
